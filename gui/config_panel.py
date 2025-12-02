@@ -1,0 +1,128 @@
+"""
+Configuration Panel for Cache Learning Application
+Allows users to configure cache parameters
+"""
+
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+                             QComboBox, QSpinBox, QPushButton, QGroupBox)
+from PyQt6.QtCore import pyqtSignal
+
+
+class ConfigPanel(QWidget):
+    """Panel for configuring cache parameters"""
+    
+    config_changed = pyqtSignal(dict)  # Emitted when configuration changes
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize UI components"""
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        
+        # Cache Type
+        cache_type_group = QGroupBox("Cache Type")
+        cache_type_layout = QVBoxLayout()
+        self.cache_type_combo = QComboBox()
+        self.cache_type_combo.addItems(["Direct-Mapped", "Set-Associative"])
+        self.cache_type_combo.currentTextChanged.connect(self.on_cache_type_changed)
+        cache_type_layout.addWidget(self.cache_type_combo)
+        cache_type_group.setLayout(cache_type_layout)
+        layout.addWidget(cache_type_group)
+        
+        # Set-Associativity (only shown for set-associative)
+        self.associativity_group = QGroupBox("Set-Associativity")
+        associativity_layout = QVBoxLayout()
+        self.associativity_combo = QComboBox()
+        self.associativity_combo.addItems(["2-way", "4-way", "8-way"])
+        associativity_layout.addWidget(self.associativity_combo)
+        self.associativity_group.setLayout(associativity_layout)
+        self.associativity_group.setVisible(False)
+        layout.addWidget(self.associativity_group)
+        
+        # Cache Size
+        cache_size_group = QGroupBox("Cache Size")
+        cache_size_layout = QVBoxLayout()
+        cache_size_layout.addWidget(QLabel("Number of slots:"))
+        self.cache_size_spin = QSpinBox()
+        self.cache_size_spin.setMinimum(2)
+        self.cache_size_spin.setMaximum(1024)
+        self.cache_size_spin.setValue(256)
+        self.cache_size_spin.setSingleStep(2)
+        cache_size_layout.addWidget(self.cache_size_spin)
+        cache_size_group.setLayout(cache_size_layout)
+        layout.addWidget(cache_size_group)
+        
+        # Block Size
+        block_size_group = QGroupBox("Block Size")
+        block_size_layout = QVBoxLayout()
+        self.block_size_combo = QComboBox()
+        self.block_size_combo.addItems(["1 word", "2 words", "4 words", "8 words"])
+        block_size_layout.addWidget(self.block_size_combo)
+        block_size_group.setLayout(block_size_layout)
+        layout.addWidget(block_size_group)
+        
+        # Write Policy
+        write_policy_group = QGroupBox("Write Policy")
+        write_policy_layout = QVBoxLayout()
+        self.write_policy_combo = QComboBox()
+        self.write_policy_combo.addItems(["Write-Through", "Write-Back"])
+        write_policy_layout.addWidget(self.write_policy_combo)
+        write_policy_group.setLayout(write_policy_layout)
+        layout.addWidget(write_policy_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.apply_button = QPushButton("Apply")
+        self.apply_button.clicked.connect(self.apply_config)
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.clicked.connect(self.reset_config)
+        button_layout.addWidget(self.apply_button)
+        button_layout.addWidget(self.reset_button)
+        layout.addLayout(button_layout)
+        
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def on_cache_type_changed(self, text):
+        """Handle cache type change"""
+        self.associativity_group.setVisible(text == "Set-Associative")
+    
+    def get_config(self) -> dict:
+        """Get current configuration"""
+        cache_type = self.cache_type_combo.currentText()
+        associativity = 1
+        if cache_type == "Set-Associative":
+            associativity_text = self.associativity_combo.currentText()
+            associativity = int(associativity_text.split("-")[0])
+        
+        block_size_text = self.block_size_combo.currentText()
+        block_size = int(block_size_text.split()[0])
+        
+        write_policy_text = self.write_policy_combo.currentText()
+        write_policy = write_policy_text.lower().replace("-", "-")
+        
+        return {
+            'cache_type': cache_type,
+            'associativity': associativity,
+            'cache_size_slots': self.cache_size_spin.value(),
+            'block_size_words': block_size,
+            'write_policy': write_policy
+        }
+    
+    def apply_config(self):
+        """Apply configuration and emit signal"""
+        config = self.get_config()
+        self.config_changed.emit(config)
+    
+    def reset_config(self):
+        """Reset to default configuration"""
+        self.cache_type_combo.setCurrentIndex(0)
+        self.associativity_combo.setCurrentIndex(0)
+        self.cache_size_spin.setValue(256)
+        self.block_size_combo.setCurrentIndex(0)
+        self.write_policy_combo.setCurrentIndex(0)
+        self.apply_config()
+
