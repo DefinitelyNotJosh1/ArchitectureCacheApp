@@ -32,6 +32,18 @@ class CacheView(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(True)
+        
+        # Style the header for better contrast
+        self.table.horizontalHeader().setStyleSheet(
+            "QHeaderView::section {"
+            "background-color: #4a4a4a;"
+            "color: white;"
+            "padding: 4px;"
+            "border: 1px solid #6c6c6c;"
+            "font-weight: bold;"
+            "}"
+        )
+        
         layout.addWidget(self.table)
         
         self.setLayout(layout)
@@ -66,24 +78,25 @@ class CacheView(QWidget):
         """Update display for direct-mapped cache"""
         num_sets = len(cache_state)
         
-        # Set up table
+        # Set up table - only 3 columns needed
         self.table.setRowCount(num_sets)
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Valid", "Tag", "Data", ""])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Valid", "Tag", "Data"])
         
-        for set_idx in range(num_sets):
+        # Display from highest to lowest (bottom up)
+        for display_row, set_idx in enumerate(range(num_sets - 1, -1, -1)):
             entry = cache_state[set_idx]['ways'][0]
             
             # Valid bit
             valid_item = QTableWidgetItem("1" if entry['valid'] else "0")
-            self.table.setItem(set_idx, 0, valid_item)
+            self.table.setItem(display_row, 0, valid_item)
             
             # Tag
             if entry['valid']:
                 tag_item = QTableWidgetItem(f"{entry['tag']:0{self._get_tag_bits()}b}")
             else:
                 tag_item = QTableWidgetItem("-")
-            self.table.setItem(set_idx, 1, tag_item)
+            self.table.setItem(display_row, 1, tag_item)
             
             # Data
             if entry['valid']:
@@ -91,16 +104,13 @@ class CacheView(QWidget):
             else:
                 data_str = "-"
             data_item = QTableWidgetItem(data_str)
-            self.table.setItem(set_idx, 2, data_item)
-            
-            # Empty column for spacing
-            self.table.setItem(set_idx, 3, QTableWidgetItem(""))
+            self.table.setItem(display_row, 2, data_item)
             
             # Highlight if this is the target set
             if set_idx == self.highlighted_set:
                 color = QColor(144, 238, 144) if self.last_operation_hit else QColor(255, 182, 193)
-                for col in range(4):
-                    item = self.table.item(set_idx, col)
+                for col in range(3):
+                    item = self.table.item(display_row, col)
                     if item:
                         item.setBackground(color)
         
@@ -121,16 +131,17 @@ class CacheView(QWidget):
             headers.extend([f"V{way}", f"Tag{way}", f"Data{way}"])
         self.table.setHorizontalHeaderLabels(headers)
         
-        for set_idx in range(num_sets):
+        # Display from highest to lowest (bottom up)
+        for display_row, set_idx in enumerate(range(num_sets - 1, -1, -1)):
             # Set index
             set_item = QTableWidgetItem(str(set_idx))
-            self.table.setItem(set_idx, 0, set_item)
+            self.table.setItem(display_row, 0, set_item)
             
             col = 1
             for way_idx, way_entry in enumerate(cache_state[set_idx]['ways']):
                 # Valid bit
                 valid_item = QTableWidgetItem("1" if way_entry['valid'] else "0")
-                self.table.setItem(set_idx, col, valid_item)
+                self.table.setItem(display_row, col, valid_item)
                 col += 1
                 
                 # Tag
@@ -138,7 +149,7 @@ class CacheView(QWidget):
                     tag_item = QTableWidgetItem(f"{way_entry['tag']:0{self._get_tag_bits()}b}")
                 else:
                     tag_item = QTableWidgetItem("-")
-                self.table.setItem(set_idx, col, tag_item)
+                self.table.setItem(display_row, col, tag_item)
                 col += 1
                 
                 # Data
@@ -147,7 +158,7 @@ class CacheView(QWidget):
                 else:
                     data_str = "-"
                 data_item = QTableWidgetItem(data_str)
-                self.table.setItem(set_idx, col, data_item)
+                self.table.setItem(display_row, col, data_item)
                 col += 1
                 
                 # Highlight if this is the target set and way
@@ -155,7 +166,7 @@ class CacheView(QWidget):
                     way_idx == self.highlighted_way):
                     color = QColor(144, 238, 144) if self.last_operation_hit else QColor(255, 182, 193)
                     for c in range(col - 3, col):
-                        item = self.table.item(set_idx, c)
+                        item = self.table.item(display_row, c)
                         if item:
                             item.setBackground(color)
         

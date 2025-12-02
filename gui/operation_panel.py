@@ -19,6 +19,7 @@ class OperationPanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.current_address = 0
         self.init_ui()
     
     def init_ui(self):
@@ -32,8 +33,16 @@ class OperationPanel(QWidget):
         self.operation_label = QLabel("No operation")
         self.operation_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
         op_layout.addWidget(self.operation_label)
+        
+        # Address with go-to button
+        address_layout = QHBoxLayout()
         self.address_label = QLabel("Address: -")
-        op_layout.addWidget(self.address_label)
+        address_layout.addWidget(self.address_label)
+        self.go_to_address_button = QPushButton("Go to Address")
+        self.go_to_address_button.setEnabled(False)
+        address_layout.addWidget(self.go_to_address_button)
+        op_layout.addLayout(address_layout)
+        
         self.value_label = QLabel("Value: -")
         op_layout.addWidget(self.value_label)
         op_group.setLayout(op_layout)
@@ -72,13 +81,17 @@ class OperationPanel(QWidget):
         block_idx_layout.addWidget(self.block_idx_input)
         decomp_layout.addLayout(block_idx_layout)
         
-        # Block Offset
-        block_off_layout = QHBoxLayout()
-        block_off_layout.addWidget(QLabel("Block Offset:"))
+        # Block Offset (only shown when block_size > 1)
+        self.block_off_layout = QHBoxLayout()
+        self.block_off_label = QLabel("Block Offset:")
         self.block_off_input = QLineEdit()
         self.block_off_input.setPlaceholderText("Enter block offset (binary)")
-        block_off_layout.addWidget(self.block_off_input)
-        decomp_layout.addLayout(block_off_layout)
+        self.block_off_layout.addWidget(self.block_off_label)
+        self.block_off_layout.addWidget(self.block_off_input)
+        decomp_layout.addLayout(self.block_off_layout)
+        # Initially hidden
+        self.block_off_label.setVisible(False)
+        self.block_off_input.setVisible(False)
         
         # Byte Offset
         byte_off_layout = QHBoxLayout()
@@ -121,16 +134,25 @@ class OperationPanel(QWidget):
         layout.addStretch()
         self.setLayout(layout)
     
-    def update_operation(self, operation_type: str, address: int, value: int = None):
+    def update_operation(self, operation_type: str, address: int, value: int = None, block_size_words: int = 1):
         """Update operation display"""
         if operation_type == 'read':
-            self.operation_label.setText(f"Read Operation")
+            self.operation_label.setText("Read Operation")
             self.address_label.setText(f"Address: {hex(address)}")
             self.value_label.setText("Value: (to be read)")
         else:
-            self.operation_label.setText(f"Write Operation")
+            self.operation_label.setText("Write Operation")
             self.address_label.setText(f"Address: {hex(address)}")
             self.value_label.setText(f"Value: {value}")
+        
+        # Enable/disable go-to button
+        self.go_to_address_button.setEnabled(True)
+        self.current_address = address
+        
+        # Show/hide block offset based on block size
+        show_block_offset = block_size_words > 1
+        self.block_off_label.setVisible(show_block_offset)
+        self.block_off_input.setVisible(show_block_offset)
         
         # Clear inputs
         self.hit_radio.setChecked(False)
@@ -140,6 +162,10 @@ class OperationPanel(QWidget):
         self.block_off_input.clear()
         self.byte_off_input.clear()
         self.feedback_text.clear()
+    
+    def set_go_to_address_callback(self, callback):
+        """Set callback for go-to address button"""
+        self.go_to_address_button.clicked.connect(lambda: callback(self.current_address))
     
     def get_hit_miss_answer(self) -> bool:
         """Get student's hit/miss answer (True = hit, False = miss)"""

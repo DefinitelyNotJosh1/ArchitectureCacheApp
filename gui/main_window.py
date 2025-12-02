@@ -3,8 +3,9 @@ Main Window for Cache Learning Application
 """
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
-                             QSplitter, QMenuBar, QMenu, QMessageBox)
+                             QSplitter, QMenuBar, QMenu, QMessageBox, QLabel, QPushButton)
 from PyQt6.QtCore import Qt
+import random
 from gui.config_panel import ConfigPanel
 from gui.cache_view import CacheView
 from gui.memory_view import MemoryView
@@ -24,6 +25,8 @@ class MainWindow(QMainWindow):
         self.cache = None
         self.memory = None
         self.exercise_manager = None
+        self.current_exercise_name = None
+        self.procedural_mode = True  # Start in procedural mode
         self.init_ui()
         self.setup_default_config()
     
@@ -39,9 +42,18 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Main layout
-        main_layout = QHBoxLayout()
+        # Main layout with status bar at top
+        main_layout = QVBoxLayout()
         central_widget.setLayout(main_layout)
+        
+        # Status message area
+        self.status_label = QLabel("Procedural Mode - No exercise loaded")
+        self.status_label.setStyleSheet("background-color: #000000; padding: 5px; font-weight: bold;")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.status_label)
+        
+        # Content layout
+        content_layout = QHBoxLayout()
         
         # Create panels
         self.config_panel = ConfigPanel()
@@ -56,6 +68,7 @@ class MainWindow(QMainWindow):
         self.operation_panel.next_operation.connect(self.on_next_operation)
         self.operation_panel.previous_operation.connect(self.on_previous_operation)
         self.operation_panel.reset_exercise.connect(self.on_reset_exercise)
+        self.operation_panel.set_go_to_address_callback(self.on_go_to_address)
         
         # Left side: Config panel
         left_widget = QWidget()
@@ -85,7 +98,8 @@ class MainWindow(QMainWindow):
         main_splitter.addWidget(right_widget)
         main_splitter.setSizes([250, 800, 400])
         
-        main_layout.addWidget(main_splitter)
+        content_layout.addWidget(main_splitter)
+        main_layout.addLayout(content_layout)
     
     def create_menu_bar(self):
         """Create menu bar"""
@@ -97,6 +111,11 @@ class MainWindow(QMainWindow):
         reset_action.triggered.connect(self.on_reset_exercise)
         load_exercise_action = file_menu.addAction("Load Exercise")
         load_exercise_action.triggered.connect(self.on_load_exercise)
+        clear_exercise_action = file_menu.addAction("Clear Exercise (Procedural Mode)")
+        clear_exercise_action.triggered.connect(self.on_clear_exercise)
+        file_menu.addSeparator()
+        random_memory_action = file_menu.addAction("Randomize Memory")
+        random_memory_action.triggered.connect(self.on_randomize_memory)
         file_menu.addSeparator()
         exit_action = file_menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
@@ -126,8 +145,77 @@ class MainWindow(QMainWindow):
         # Create exercise manager
         self.exercise_manager = ExerciseManager(self.cache, self.memory)
         
+        # Update block offset visibility
+        self.update_block_offset_visibility()
+        
+        # Update status message
+        self.update_status_message()
+        
         # Update displays
         self.update_all_displays()
+    
+    def update_block_offset_visibility(self):
+        """Update block offset field visibility based on block size"""
+        if self.cache:
+            block_size = self.cache.block_size_words
+            self.operation_panel.block_off_label.setVisible(block_size > 1)
+            self.operation_panel.block_off_input.setVisible(block_size > 1)
+    
+    def on_go_to_address(self, address: int):
+        """Handle go to address button click"""
+        self.memory_view.scroll_to_address(address)
+    
+    def on_randomize_memory(self):
+        """Randomize memory contents"""
+        if not self.memory:
+            QMessageBox.warning(self, "Warning", "Please configure cache first.")
+            return
+        
+        # Calculate total number of word-aligned addresses (64KB / 4 bytes per word)
+        total_addresses = 65536 // 4  # 16384 addresses
+        
+        # Randomly select 50-100% of all memory cells
+        percentage = random.uniform(0.5, 1.0)
+        num_addresses = int(total_addresses * percentage)
+        
+        # Get all possible word-aligned addresses
+        all_addresses = list(range(0, 65536, 4))
+        
+        # Randomly sample the desired number of addresses
+        selected_addresses = random.sample(all_addresses, num_addresses)
+        
+        # Populate selected addresses with random values
+        for addr in selected_addresses:
+            value = random.randint(0, 1000)
+            self.memory.write(addr, value)
+        
+        self.update_all_displays()
+        QMessageBox.information(self, "Memory Randomized", 
+                               f"Randomly populated {num_addresses} memory addresses "
+                               f"({percentage*100:.1f}% of total memory).")
+    
+    def on_clear_exercise(self):
+        """Clear exercise and enter procedural mode"""
+        self.current_exercise_name = None
+        self.procedural_mode = True
+        if self.exercise_manager:
+            self.exercise_manager.operations = []
+            self.exercise_manager.current_operation_index = 0
+        self.update_status_message()
+        self.update_operation_display()
+        self.update_all_displays()
+    
+    def update_status_message(self):
+        """Update status message at top of window"""
+        if self.current_exercise_name:
+            self.status_label.setText(f"Exercise Loaded: {self.current_exercise_name}")
+            self.status_label.setStyleSheet("background-color: #90EE90; padding: 5px; font-weight: bold;")
+        elif self.procedural_mode:
+            self.status_label.setText("Procedural Mode - No exercise loaded")
+            self.status_label.setStyleSheet("background-color: #FE9900; padding: 5px; font-weight: bold;")
+        else:
+            self.status_label.setText("No exercise loaded")
+            self.status_label.setStyleSheet("background-color: #e0e0e0; padding: 5px; font-weight: bold;")
     
     def on_check_answer(self):
         """Handle check answer button click"""
@@ -137,8 +225,15 @@ class MainWindow(QMainWindow):
         
         op = self.exercise_manager.get_current_operation()
         if not op:
-            self.operation_panel.set_feedback("No current operation.", False)
-            return
+            # In procedural mode, create a new operation from current address
+            if self.procedural_mode:
+                # Get address from operation panel if available
+                # For now, just show feedback
+                self.operation_panel.set_feedback("Enter an address to perform operation.", False)
+                return
+            else:
+                self.operation_panel.set_feedback("No current operation.", False)
+                return
         
         # Execute operation once to get actual result
         hit, value, state = self.exercise_manager.execute_current_operation()
@@ -161,9 +256,11 @@ class MainWindow(QMainWindow):
         if all_correct:
             feedback = "Correct! Both hit/miss and address decomposition are correct."
             self.operation_panel.set_feedback(feedback, True)
-            if should_advance and self.exercise_manager.has_next():
-                self.exercise_manager.next_operation()
-                self.update_operation_display()
+            if should_advance:
+                if self.procedural_mode or self.exercise_manager.has_next():
+                    if not self.procedural_mode:
+                        self.exercise_manager.next_operation()
+                    self.update_operation_display()
         else:
             feedback_parts = []
             if not is_correct_hm:
@@ -195,8 +292,9 @@ class MainWindow(QMainWindow):
                 self.operation_panel.block_off_input.setText(f"{correct_bo:0{bo_bits}b}")
                 self.operation_panel.byte_off_input.setText(f"{correct_byo:0{byo_bits}b}")
                 
-                if self.exercise_manager.has_next():
-                    self.exercise_manager.next_operation()
+                if self.procedural_mode or self.exercise_manager.has_next():
+                    if not self.procedural_mode:
+                        self.exercise_manager.next_operation()
                     self.update_operation_display()
         
         # Update displays with hit/miss info
@@ -204,6 +302,11 @@ class MainWindow(QMainWindow):
     
     def on_next_operation(self):
         """Handle next operation button"""
+        if self.procedural_mode:
+            # In procedural mode, just clear and allow new operation
+            self.operation_panel.clear_feedback()
+            return
+        
         if self.exercise_manager and self.exercise_manager.has_next():
             self.exercise_manager.next_operation()
             self.update_operation_display()
@@ -257,6 +360,9 @@ class MainWindow(QMainWindow):
                 try:
                     operations = load_exercise(exercise_name, self.memory)
                     self.exercise_manager.load_exercise(operations, reset_cache=True)
+                    self.current_exercise_name = exercise_name
+                    self.procedural_mode = False
+                    self.update_status_message()
                     self.update_operation_display()
                     self.update_all_displays()
                 except Exception as e:
@@ -274,10 +380,21 @@ class MainWindow(QMainWindow):
             return
         
         op = self.exercise_manager.get_current_operation()
+        block_size = self.cache.block_size_words if self.cache else 1
+        
         if op:
-            self.operation_panel.update_operation(op.operation_type, op.address, op.value)
+            self.operation_panel.update_operation(op.operation_type, op.address, op.value, block_size)
+        elif self.procedural_mode:
+            # In procedural mode with no operation, show empty state
+            self.operation_panel.operation_label.setText("Procedural Mode - No current operation")
+            self.operation_panel.address_label.setText("Address: -")
+            self.operation_panel.value_label.setText("Value: -")
+            self.operation_panel.go_to_address_button.setEnabled(False)
+            # Update block offset visibility
+            self.operation_panel.block_off_label.setVisible(block_size > 1)
+            self.operation_panel.block_off_input.setVisible(block_size > 1)
         else:
-            self.operation_panel.update_operation('read', 0, None)
+            self.operation_panel.update_operation('read', 0, None, block_size)
     
     def update_all_displays(self, is_hit: bool = None):
         """Update all display panels"""
@@ -329,7 +446,11 @@ class MainWindow(QMainWindow):
         
         # Update stats panel
         stats = self.cache.get_statistics()
-        current_op = self.exercise_manager.get_operation_number() if self.exercise_manager else 0
-        total_ops = self.exercise_manager.get_total_operations() if self.exercise_manager else 0
+        if self.procedural_mode:
+            current_op = 0
+            total_ops = 0
+        else:
+            current_op = self.exercise_manager.get_operation_number() if self.exercise_manager else 0
+            total_ops = self.exercise_manager.get_total_operations() if self.exercise_manager else 0
         self.stats_panel.update_stats(stats['hits'], stats['misses'], current_op, total_ops)
 
